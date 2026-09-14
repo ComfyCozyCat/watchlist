@@ -1,0 +1,15 @@
+.env
+.env.*
+*.pem
+*.key
+*credentials*
+*private-key*
+config.json
+state.json
+request-*.json
+node_modules/
+test-results/
+playwright-report/
+*.png
+*.pdf
+plaintext*

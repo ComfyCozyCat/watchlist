@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="theme-color" content="#f5f0e7">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>Currently Watching</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <a class="brand" href="./" aria-label="Watchlist home"><span class="mark" aria-hidden="true">w.</span> WATCHLIST</a>
+      <button id="lock" class="quiet" hidden>Lock</button>
+    </header>
+    <section class="intro">
+      <p class="eyebrow">RIGHT WHERE YOU LEFT OFF</p>
+      <h1>Currently watching<span>.</span></h1>
+      <p id="subtitle" class="muted">Your shows, saved for later.</p>
+    </section>
+    <section id="unlock" class="unlock-card" aria-labelledby="unlock-title">
+      <span class="small-label">YOUR PRIVATE LIST</span>
+      <h2 id="unlock-title">Make yourself comfortable.</h2>
+      <p class="muted">Enter your watchlist password to pick up where you left off.</p>
+      <form id="unlock-form">
+        <label for="password">Password</label>
+        <div class="password-row"><input id="password" type="password" autocomplete="current-password" required><button id="reveal" type="button" class="quiet" aria-label="Show password">Show</button></div>
+        <label class="remember"><input id="remember" type="checkbox" checked> Remember on this device</label>
+        <button id="unlock-button" class="primary" type="submit" disabled>Open my watchlist <span aria-hidden="true">↗</span></button>
+      </form>
+      <p id="message" class="message" role="status" aria-live="polite">Loading your saved list…</p>
+    </section>
+    <section id="library" hidden aria-label="Your shows">
+      <div class="list-toolbar"><p id="count" class="small-label"></p><label class="search-label"><span class="sr-only">Find a show</span><input id="search" type="search" placeholder="Find a show" autocomplete="off"></label></div>
+      <div id="shows" class="shows"></div>
+      <p id="empty" class="empty" hidden>No shows here yet. Your next sync will bring them over.</p>
+      <footer class="list-footer"><p id="updated"></p><button id="refresh" class="quiet">Refresh</button></footer>
+      <p id="refresh-message" class="message" role="status" aria-live="polite"></p>
+    </section>
+    <footer class="page-footer">A bookmark for your next episode.</footer>
+  </main>
+</body>
+</html>
