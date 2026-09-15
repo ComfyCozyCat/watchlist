@@ -4,12 +4,16 @@ const $ = id => document.getElementById(id);
 const storageKey = `watchlist:${location.pathname}:unlock`;
 let envelope, activeKey, activeSalt, snapshot;
 let loading = false;
+let accessGeneration = 0;
 function storageRead() { try { return JSON.parse(localStorage.getItem(storageKey)); } catch { return null; } }
 function storageClear() { try { localStorage.removeItem(storageKey); } catch {} }
 function lock(message = '') {
+  accessGeneration++;
   activeKey = null; activeSalt = null; snapshot = null;
   $('shows').replaceChildren(); $('library').hidden = true; $('lock').hidden = true; $('unlock').hidden = false;
   $('password').value = ''; $('subtitle').textContent = 'Your shows, saved for later.'; $('message').textContent = message;
+  $('password').type = 'password'; $('reveal').textContent = 'Show'; $('reveal').setAttribute('aria-label','Show password');
+  $('search').value = ''; $('updated').textContent = ''; $('count').textContent = ''; $('refresh-message').textContent = '';
 }
 function clock(seconds) {
   seconds = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -52,9 +56,12 @@ async function fetchEnvelope() {
 async function load() {
   if (loading) return;
   loading = true;
+  const generation = accessGeneration;
   try {
     if (!crypto.subtle) throw new Error('Secure browser needed');
-    envelope = await fetchEnvelope();
+    const next = await fetchEnvelope();
+    if (generation !== accessGeneration) return;
+    envelope = next;
     $('unlock-button').disabled = false;
     const remembered = storageRead();
     let key = activeSalt === envelope.salt ? activeKey : null;
@@ -63,14 +70,18 @@ async function load() {
     }
     if (key) {
       try {
-        snapshot = await decrypt(envelope,key); activeKey = key; activeSalt = envelope.salt; render(); $('refresh-message').textContent = '';
-      } catch { storageClear(); lock('Please unlock your list again.'); }
+        const result = await decrypt(next,key);
+        if (generation !== accessGeneration) return;
+        snapshot = result; activeKey = key; activeSalt = next.salt; render(); $('refresh-message').textContent = '';
+      } catch { if (generation === accessGeneration) { storageClear(); lock('Please unlock your list again.'); } }
     } else {
+      if (generation !== accessGeneration) return;
       const wasUnlocked = Boolean(activeKey);
       lock(wasUnlocked ? 'The password changed. Enter the new password to continue.' : '');
       if (remembered && remembered.salt !== envelope.salt) storageClear();
     }
   } catch {
+    if (generation !== accessGeneration) return;
     if (snapshot) $('refresh-message').textContent = 'Couldn’t refresh. You’re still viewing the last loaded update.';
     else { lock('Your list isn’t available yet. Try again after the dashboard syncs.'); $('unlock-button').disabled = true; }
   } finally { loading = false; }
@@ -78,21 +89,29 @@ async function load() {
 $('unlock-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (!envelope) return;
+  const generation = ++accessGeneration;
+  const unlockingEnvelope = envelope;
+  const remember = $('remember').checked;
   $('unlock-button').disabled = true; $('message').textContent = 'Opening your list…';
   try {
-    const key = await deriveKey($('password').value, envelope.salt);
-    const result = await decrypt(envelope,key);
-    activeKey = key; activeSalt = envelope.salt; snapshot = result;
+    const key = await deriveKey($('password').value, unlockingEnvelope.salt);
+    const result = await decrypt(unlockingEnvelope,key);
+    const rememberedKey = remember ? encode64(await crypto.subtle.exportKey('raw',key)) : null;
+    if (generation !== accessGeneration) return;
+    activeKey = key; activeSalt = unlockingEnvelope.salt; snapshot = result;
     storageClear();
-    if ($('remember').checked) {
-      try { localStorage.setItem(storageKey,JSON.stringify({salt:envelope.salt,key:encode64(await crypto.subtle.exportKey('raw',key))})); } catch {}
+    if (remember) {
+      try { localStorage.setItem(storageKey,JSON.stringify({salt:unlockingEnvelope.salt,key:rememberedKey})); } catch {}
     }
     $('password').value = ''; $('message').textContent = ''; render();
-  } catch { $('message').textContent = 'That password didn’t unlock the list. Please try again.'; }
+  } catch { if (generation === accessGeneration) $('message').textContent = 'That password didn’t unlock the list. Please try again.'; }
   finally { $('unlock-button').disabled = false; }
 });
 $('reveal').addEventListener('click',() => { const show = $('password').type === 'password'; $('password').type = show ? 'text' : 'password'; $('reveal').textContent = show ? 'Hide' : 'Show'; $('reveal').setAttribute('aria-label',show ? 'Hide password' : 'Show password'); });
 $('lock').addEventListener('click',() => { storageClear(); lock(); $('password').focus(); });
+window.addEventListener('storage',event => {
+  if ((event.key === storageKey || event.key === null) && event.newValue === null) lock();
+});
 $('search').addEventListener('input',render);
 $('refresh').addEventListener('click',load);
 document.addEventListener('visibilitychange',() => { if (document.visibilityState === 'visible') load(); });
