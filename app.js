@@ -51,6 +51,14 @@ function render() {
   $('updated').textContent = Number.isNaN(updated.getTime()) ? 'Last update unavailable' : `Updated ${new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(updated)}`;
   $('unlock').hidden = true; $('library').hidden = false; $('lock').hidden = false;
 }
+function renderUnlocked() {
+  try {
+    render();
+  } catch {
+    storageClear();
+    lock('Your password worked, but the page couldn’t display your list. Reload this page and try again.');
+  }
+}
 async function fetchEnvelope() {
   const response = await fetch('./watchlist-data.json', {cache:'no-store'});
   if (!response.ok) throw new Error('Snapshot unavailable');
@@ -75,7 +83,7 @@ async function load() {
       try {
         const result = await decrypt(next,key);
         if (generation !== accessGeneration) return;
-        snapshot = result; activeKey = key; activeSalt = next.salt; render(); $('refresh-message').textContent = '';
+        snapshot = result; activeKey = key; activeSalt = next.salt; renderUnlocked(); $('refresh-message').textContent = '';
       } catch { if (generation === accessGeneration) { storageClear(); lock('Please unlock your list again.'); } }
     } else {
       if (generation !== accessGeneration) return;
@@ -106,7 +114,7 @@ $('unlock-form').addEventListener('submit', async event => {
     if (remember) {
       try { localStorage.setItem(storageKey,JSON.stringify({salt:unlockingEnvelope.salt,key:rememberedKey})); } catch {}
     }
-    $('password').value = ''; $('message').textContent = ''; render();
+    $('password').value = ''; $('message').textContent = ''; renderUnlocked();
   } catch { if (generation === accessGeneration) $('message').textContent = 'That password didn’t unlock the list. Please try again.'; }
   finally { $('unlock-button').disabled = false; }
 });
