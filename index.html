@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="theme-color" content="#f5f0e7">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <title>Currently Watching</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20260917-login-1">
-  <script type="module" src="app.js?v=20260917-login-1"></script>
+  <link rel="stylesheet" href="styles.css?v=20260925-edit-1">
+  <script type="module" src="app.js?v=20260925-edit-1"></script>
 </head>
 <body>
   <main>
@@ -34,11 +34,42 @@
     </section>
     <section id="library" hidden aria-label="Your shows">
       <div class="list-toolbar"><p id="count" class="small-label"></p><label class="search-label"><span class="sr-only">Find a show</span><input id="search" type="search" placeholder="Find a show" autocomplete="off"></label></div>
+      <div class="editing-toolbar"><span id="editing-state" class="muted"></span><button id="editing-setup" class="quiet">Editing setup</button></div>
       <div id="shows" class="shows"></div>
       <p id="empty" class="empty" hidden>No shows here yet. Your next sync will bring them over.</p>
       <footer class="list-footer"><p id="updated"></p><button id="refresh" class="quiet">Refresh</button></footer>
       <p id="refresh-message" class="message" role="status" aria-live="polite"></p>
     </section>
   </main>
+  <dialog id="setup-dialog" class="edit-dialog" aria-labelledby="setup-title">
+    <h2 id="setup-title">Editing setup</h2>
+    <p class="muted">Connect your Watchlist token to save progress from this browser. It stays on this device and is sent only to GitHub to authorize requests. It is never saved in your repository.</p>
+    <form id="setup-form">
+      <label for="token">GitHub token</label>
+      <input id="token" class="token-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required placeholder="github_pat_…">
+      <label class="remember"><input id="remember-editing" type="checkbox" checked> Remember editing access on this device</label>
+      <div class="edit-actions"><button id="setup-save" class="primary" type="submit">Connect editing</button><button id="setup-close" class="quiet" type="button">Close</button></div>
+    </form>
+    <button id="forget-editing" class="quiet" type="button" hidden>Forget editing access</button>
+    <p id="setup-message" class="message" role="status" aria-live="polite"></p>
+  </dialog>
+  <dialog id="editor-dialog" class="edit-dialog" aria-labelledby="editor-title">
+    <p id="editor-context" class="muted"></p>
+    <h2 id="editor-title"></h2>
+    <form id="editor-form">
+      <label for="episode-state">Status</label>
+      <select id="episode-state"><option value="progress">In progress</option><option value="watched">Watched</option><option value="unwatched">Unwatched</option></select>
+      <div class="time-fields">
+        <label for="hours">Hours<input id="hours" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off"></label>
+        <span aria-hidden="true">:</span>
+        <label for="minutes">Minutes<input id="minutes" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off"></label>
+        <span aria-hidden="true">:</span>
+        <label for="seconds">Seconds<input id="seconds" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="2" autocomplete="off"></label>
+      </div>
+      <p id="duration-hint" class="muted"></p>
+      <div class="edit-actions"><button id="editor-save" class="primary" type="submit">Save</button><button id="editor-cancel" class="quiet" type="button">Cancel</button></div>
+    </form>
+    <p id="editor-message" class="message" role="status" aria-live="polite"></p>
+  </dialog>
 </body>
 </html>

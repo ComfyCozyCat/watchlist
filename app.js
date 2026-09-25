@@ -1,9 +1,17 @@
-import {deriveKey, decrypt, validateEnvelope, encode64, decode64} from './crypto.js';
+import {deriveKey, decrypt, validateEnvelope, encode64, decode64} from './crypto.js?v=20260925-edit-1';
+import {ProgressStore, emptyProgress, applyProgress, episodeKey, episodeIndex} from './progress.js?v=20260925-edit-1';
+import {Editor} from './editor.js?v=20260925-edit-1';
 
 const $ = id => document.getElementById(id);
 const storageKey = `watchlist:${location.pathname}:unlock`;
 let envelope, activeKey, activeSalt, snapshot;
 let loading = false;
+let baseSnapshot, progress = emptyProgress(), editableEpisodes = new Map();
+const store = new ProgressStore();
+const editor = new Editor(store, () => ({key:activeKey, salt:activeSalt, generation:accessGeneration, base:baseSnapshot, progress}), value => {
+  progress = value; snapshot = applyProgress(baseSnapshot, progress); renderUnlocked();
+  $('refresh-message').textContent = 'Saved online. Your other browsers will see it when refreshed.';
+});
 const browseViews = new Map();
 let accessGeneration = 0;
 function storageRead() { try { return JSON.parse(localStorage.getItem(storageKey)); } catch { return null; } }
@@ -11,6 +19,7 @@ function storageClear() { try { localStorage.removeItem(storageKey); } catch {} 
 function lock(message = '') {
   accessGeneration++;
   browseViews.clear();
+  editor.lock(); baseSnapshot = null; progress = emptyProgress();
   activeKey = null; activeSalt = null; snapshot = null;
   $('shows').replaceChildren(); $('library').hidden = true; $('lock').hidden = true; $('unlock').hidden = false;
   $('password').value = ''; $('message').textContent = message;
@@ -25,6 +34,7 @@ function clock(seconds) {
 function element(tag, className, text) { const node = document.createElement(tag); node.className = className; node.textContent = text; return node; }
 function render() {
   if (!snapshot) return;
+  editableEpisodes = episodeIndex(baseSnapshot);
   const query = $('search').value.trim().toLocaleLowerCase();
   const shows = snapshot.shows.filter(show => String(show.name).toLocaleLowerCase().includes(query));
   $('shows').replaceChildren();
@@ -47,7 +57,8 @@ function render() {
   $('count').textContent = `${snapshot.shows.length} ${snapshot.shows.length === 1 ? 'SHOW' : 'SHOWS'} ON YOUR LIST`;
   $('empty').hidden = shows.length > 0;
   $('empty').textContent = query ? 'No matching shows.' : 'No shows here yet. Add a favorite in the dashboard, then sync.';
-  const updated = new Date(snapshot.updated_at);
+  const latest = [snapshot.updated_at, progress.updated_at].filter(Boolean).sort().at(-1);
+  const updated = new Date(latest);
   $('updated').textContent = Number.isNaN(updated.getTime()) ? 'Last update unavailable' : `Updated ${new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(updated)}`;
   $('unlock').hidden = true; $('library').hidden = false; $('lock').hidden = false;
 }
@@ -64,8 +75,24 @@ async function fetchEnvelope() {
   if (!response.ok) throw new Error('Snapshot unavailable');
   const next = await response.json(); validateEnvelope(next); return next;
 }
+async function acceptSnapshot(result, key, salt, generation) {
+  if (generation !== accessGeneration) return;
+  if (activeSalt !== salt) progress = emptyProgress();
+  baseSnapshot = result; activeKey = key; activeSalt = salt;
+  await editor.restore();
+  if (generation !== accessGeneration) return;
+  let warning = '';
+  try {
+    const remote = await store.readProgress(key, salt);
+    if (generation !== accessGeneration) return;
+    progress = remote.value;
+  } catch (error) { warning = `Website progress couldn’t refresh. ${error.message}`; }
+  if (generation !== accessGeneration) return;
+  snapshot = applyProgress(baseSnapshot, progress); renderUnlocked();
+  if (generation === accessGeneration) $('refresh-message').textContent = warning;
+}
 async function load() {
-  if (loading) return;
+  if (loading || editor.isOpen() || editor.busy) return;
   loading = true;
   const generation = accessGeneration;
   try {
@@ -83,7 +110,7 @@ async function load() {
       try {
         const result = await decrypt(next,key);
         if (generation !== accessGeneration) return;
-        snapshot = result; activeKey = key; activeSalt = next.salt; renderUnlocked(); $('refresh-message').textContent = '';
+        await acceptSnapshot(result, key, next.salt, generation);
       } catch { if (generation === accessGeneration) { storageClear(); lock('Please unlock your list again.'); } }
     } else {
       if (generation !== accessGeneration) return;
@@ -109,12 +136,12 @@ $('unlock-form').addEventListener('submit', async event => {
     const result = await decrypt(unlockingEnvelope,key);
     const rememberedKey = remember ? encode64(await crypto.subtle.exportKey('raw',key)) : null;
     if (generation !== accessGeneration) return;
-    activeKey = key; activeSalt = unlockingEnvelope.salt; snapshot = result;
     storageClear();
     if (remember) {
       try { localStorage.setItem(storageKey,JSON.stringify({salt:unlockingEnvelope.salt,key:rememberedKey})); } catch {}
     }
-    $('password').value = ''; $('message').textContent = ''; renderUnlocked();
+    $('password').value = ''; $('message').textContent = '';
+    await acceptSnapshot(result, key, unlockingEnvelope.salt, generation);
   } catch { if (generation === accessGeneration) $('message').textContent = 'That password didn’t unlock the list. Please try again.'; }
   finally { $('unlock-button').disabled = false; }
 });
@@ -207,6 +234,12 @@ function episodeBrowser(show) {
         if (ep.available === false) hints.push('Unavailable');
         if (ep.current) hints.push(show.status === 'resume' ? 'Resume' : show.status === 'caught_up' ? 'Last watched' : 'Next up');
         if (hints.length) title.append(element('small', '', hints.join(' · ')));
+        const edit = element('button', 'episode-edit', 'Edit');
+        edit.type = 'button'; edit.setAttribute('aria-label', `Edit ${label}`);
+        edit.disabled = !editableEpisodes.get(episodeKey(show, season, ep));
+        if (edit.disabled) edit.title = 'This episode has an ambiguous identity. Give it a unique title in the desktop app first.';
+        edit.addEventListener('click', () => editor.open(show, season, ep, label));
+        title.append(edit);
         row.append(title, element('td', '', ep.watched ? 'Watched' : ep.position_seconds != null ? clock(ep.position_seconds) : '—'), element('td', '', ep.duration_seconds != null ? clock(ep.duration_seconds) : '—'));
         body.append(row); count++;
       });
