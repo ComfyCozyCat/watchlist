@@ -1,4 +1,4 @@
-import {seal, openSealed} from './crypto.js?v=20260925-edit-1';
+import {seal, openSealed} from './crypto.js?v=20260926-sync-1';
 
 const API = 'https://api.github.com/repos/ComfyCozyCat/watchlist/contents/';
 const FILE = 'watchlist-progress.json';
@@ -45,6 +45,8 @@ export function applyProgress(base, progress) {
     const match = index.get(edit.key);
     if (!match) continue;
     const {show, episode} = match;
+    // Imported revisions and newer desktop edits supersede the old override.
+    if (episode.website_revision === edit.revision || (Number.isFinite(Date.parse(episode.watch_updated_at)) && Date.parse(episode.watch_updated_at) >= Date.parse(edit.updated_at))) continue;
     episode.watched = edit.watched;
     episode.position_seconds = edit.watched ? null : Math.min(edit.position_seconds, Number.isFinite(episode.duration_seconds) && episode.duration_seconds > 0 ? Math.floor(episode.duration_seconds) : MAX_SECONDS);
     const previous = touched.get(show);
@@ -119,6 +121,8 @@ export class ProgressStore {
     const source = await openSealed(desktop.envelope, key, 'watchlist-v1');
     const match = uniqueEpisode(source, edit.key);
     if (!match) throw new Error('This episode changed or is ambiguous in the latest desktop list. Cancel, refresh, and select it again.');
+    const displayed = uniqueEpisode(baseSnapshot, edit.key);
+    if (displayed?.episode.watch_updated_at !== match.episode.watch_updated_at) throw new Error('This episode changed in the desktop app. Cancel and Refresh before editing again.');
     for (let attempt = 0; attempt < 3; attempt++) {
       stillActive();
       const remote = await this.readProgress(key, salt);

@@ -8,8 +8,8 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <title>Currently Watching</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20260925-edit-1">
-  <script type="module" src="app.js?v=20260925-edit-1"></script>
+  <link rel="stylesheet" href="styles.css?v=20260926-sync-1">
+  <script type="module" src="app.js?v=20260926-sync-1"></script>
 </head>
 <body>
   <main>
@@ -57,6 +57,10 @@
     <p id="editor-context" class="muted"></p>
     <h2 id="editor-title"></h2>
     <form id="editor-form">
+      <div class="edit-selectors">
+        <label for="edit-season">Season<select id="edit-season"></select></label>
+        <label for="edit-episode">Episode<select id="edit-episode"></select></label>
+      </div>
       <label for="episode-state">Status</label>
       <select id="episode-state"><option value="progress">In progress</option><option value="watched">Watched</option><option value="unwatched">Unwatched</option></select>
       <div class="time-fields">

@@ -1,14 +1,14 @@
-import {deriveKey, decrypt, validateEnvelope, encode64, decode64} from './crypto.js?v=20260925-edit-1';
-import {ProgressStore, emptyProgress, applyProgress, episodeKey, episodeIndex} from './progress.js?v=20260925-edit-1';
-import {Editor} from './editor.js?v=20260925-edit-1';
+import {deriveKey, decrypt, validateEnvelope, encode64, decode64} from './crypto.js?v=20260926-sync-1';
+import {ProgressStore, emptyProgress, applyProgress, episodeKey} from './progress.js?v=20260926-sync-1';
+import {Editor} from './editor.js?v=20260926-sync-1';
 
 const $ = id => document.getElementById(id);
 const storageKey = `watchlist:${location.pathname}:unlock`;
 let envelope, activeKey, activeSalt, snapshot;
 let loading = false;
-let baseSnapshot, progress = emptyProgress(), editableEpisodes = new Map();
+let baseSnapshot, progress = emptyProgress();
 const store = new ProgressStore();
-const editor = new Editor(store, () => ({key:activeKey, salt:activeSalt, generation:accessGeneration, base:baseSnapshot, progress}), value => {
+const editor = new Editor(store, () => ({key:activeKey, salt:activeSalt, generation:accessGeneration, base:baseSnapshot, progress, snapshot}), value => {
   progress = value; snapshot = applyProgress(baseSnapshot, progress); renderUnlocked();
   $('refresh-message').textContent = 'Saved online. Your other browsers will see it when refreshed.';
 });
@@ -34,7 +34,6 @@ function clock(seconds) {
 function element(tag, className, text) { const node = document.createElement(tag); node.className = className; node.textContent = text; return node; }
 function render() {
   if (!snapshot) return;
-  editableEpisodes = episodeIndex(baseSnapshot);
   const query = $('search').value.trim().toLocaleLowerCase();
   const shows = snapshot.shows.filter(show => String(show.name).toLocaleLowerCase().includes(query));
   $('shows').replaceChildren();
@@ -45,6 +44,12 @@ function render() {
     detail.append(element('h2','',show.name));
     const episode = [show.season ? `Season ${show.season}` : '', show.disc ? `Disc ${String(show.disc).padStart(2,'0')} · ${show.disc_position} - ${show.episode}` : show.episode].filter(Boolean).join(' · ');
     detail.append(element('p','episode',show.status === 'caught_up' ? `Last watched: ${episode}` : episode || 'Nothing started yet'));
+    if (Array.isArray(show.seasons) && show.seasons.length) {
+      const edit = element('button', 'show-edit', 'Edit');
+      edit.type = 'button'; edit.setAttribute('aria-label', `Edit progress for ${show.name}`);
+      edit.addEventListener('click', () => editor.openShow(show));
+      detail.append(edit);
+    }
     row.append(detail);
     const meta = element('div','show-meta','');
     const label = show.status === 'resume' ? 'Resume' : show.status === 'next' ? 'Next up' : show.status === 'caught_up' ? 'Saved episodes watched' : 'Not started';
@@ -234,12 +239,6 @@ function episodeBrowser(show) {
         if (ep.available === false) hints.push('Unavailable');
         if (ep.current) hints.push(show.status === 'resume' ? 'Resume' : show.status === 'caught_up' ? 'Last watched' : 'Next up');
         if (hints.length) title.append(element('small', '', hints.join(' · ')));
-        const edit = element('button', 'episode-edit', 'Edit');
-        edit.type = 'button'; edit.setAttribute('aria-label', `Edit ${label}`);
-        edit.disabled = !editableEpisodes.get(episodeKey(show, season, ep));
-        if (edit.disabled) edit.title = 'This episode has an ambiguous identity. Give it a unique title in the desktop app first.';
-        edit.addEventListener('click', () => editor.open(show, season, ep, label));
-        title.append(edit);
         row.append(title, element('td', '', ep.watched ? 'Watched' : ep.position_seconds != null ? clock(ep.position_seconds) : '—'), element('td', '', ep.duration_seconds != null ? clock(ep.duration_seconds) : '—'));
         body.append(row); count++;
       });
