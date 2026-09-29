@@ -46,6 +46,8 @@ disc position, and fills the time. Review and adjust the selected episode or
 time before saving. The photo and OCR text stay in the browser; OCR code and
 English language data are served from this repository, with no third-party
 OCR request. The ordinary Save still syncs encrypted progress to GitHub.
+If automatic scanning misses the status bar, drag a rectangle over `TRK` and
+the timestamp in the local photo preview, then choose **Rescan selected area**.
 Minutes and seconds stay within 00–59. Positions above a known episode length
 adjust to its end when leaving a field or saving. Hours support long recordings;
 unknown lengths have no guessed media-duration limit (the input permits up to

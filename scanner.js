@@ -28,18 +28,21 @@ export function parseDVD(text) {
   return {track: value > 0 && value <= total ? value : null, total: total > 0 ? total : null, time};
 }
 
-export async function readDVD(file) {
+export async function readDVD(file, crop = null) {
   if (!file.type.startsWith('image/')) throw new Error('Choose a photo');
   const bitmap = await createImageBitmap(file);
   try {
     const ocr = await worker();
-    // Player status is near the top; the second pass handles looser framing.
-    for (const [top,height] of [[.07,.13],[0,.32]]) {
-      const width = Math.min(2304, bitmap.width * 2);
+    // The manual selection uses the exact rectangle; automatic scanning tries two top strips.
+    const regions = crop ? [crop] : [{x:0,y:.07,width:1,height:.13},{x:0,y:0,width:1,height:.32}];
+    for (const [index,region] of regions.entries()) {
+      const sourceWidth = bitmap.width * region.width, sourceHeight = bitmap.height * region.height;
+      if (sourceWidth < 10 || sourceHeight < 10) throw new Error('Selected area is too small');
+      const width = Math.min(2304, Math.max(600, sourceWidth * 2));
       const canvas = document.createElement('canvas');
-      canvas.width = width; canvas.height = Math.round(bitmap.height * height * width / bitmap.width);
+      canvas.width = Math.round(width); canvas.height = Math.round(sourceHeight * width / sourceWidth);
       const context = canvas.getContext('2d', {willReadFrequently:true});
-      context.drawImage(bitmap, 0, bitmap.height * top, bitmap.width, bitmap.height * height, 0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, bitmap.width * region.x, bitmap.height * region.y, sourceWidth, sourceHeight, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0,0,canvas.width,canvas.height);
       for (let i=0; i<pixels.data.length; i+=4) {
         const lum = .2126*pixels.data[i]+.7152*pixels.data[i+1]+.0722*pixels.data[i+2];
@@ -50,7 +53,7 @@ export async function readDVD(file) {
       const {data} = await ocr.recognize(canvas);
       const result = parseDVD(data.text);
       if (result.track && result.time) return result;
-      if (top === 0) return result;
+      if (index === regions.length - 1) return result;
     }
   } finally { bitmap.close(); }
 }

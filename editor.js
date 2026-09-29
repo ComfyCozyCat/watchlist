@@ -1,6 +1,6 @@
 import {seal, openSealed} from './crypto.js?v=20260926-sync-1';
 import {clampTime, episodeKey, uniqueEpisode} from './progress.js?v=20260926-sync-1';
-import {readDVD} from './scanner.js?v=20260929-scan-2';
+import {readDVD} from './scanner.js?v=20260929-crop-1';
 const $ = id => document.getElementById(id);
 const tokenKey = `watchlist:${location.pathname}:editing`;
 const TOKEN_AAD = 'watchlist-local-editing-token-v1';
@@ -9,6 +9,7 @@ export class Editor {
   constructor(store, context, changed) {
     this.store = store; this.context = context; this.changed = changed;
     this.busy = false; this.entry = null; this.serial = 0; this.editingShow = null;
+    this.scanFile = null; this.previewBitmap = null; this.selection = null; this.dragStart = null;
     $('editing-setup').onclick = () => { $('setup-message').textContent = ''; $('token').value = ''; $('setup-dialog').showModal(); };
     $('setup-close').onclick = () => $('setup-dialog').close();
     $('forget-editing').onclick = () => {
@@ -18,7 +19,7 @@ export class Editor {
     };
     $('setup-form').onsubmit = event => { event.preventDefault(); this.connect(); };
     $('editor-cancel').onclick = () => $('editor-dialog').close();
-    $('editor-dialog').addEventListener('close', () => { this.serial++; this.entry = null; this.editingShow = null; $('scan-message').textContent = ''; });
+    $('editor-dialog').addEventListener('close', () => { this.serial++; this.entry = null; this.editingShow = null; this.clearPreview(); $('scan-message').textContent = ''; });
     $('editor-dialog').addEventListener('cancel', event => { if (this.busy) event.preventDefault(); });
     $('setup-dialog').addEventListener('cancel', event => { if (this.busy) event.preventDefault(); });
     $('edit-season').onchange = () => this.chooseSeason();
@@ -27,8 +28,30 @@ export class Editor {
     $('scan-button').onclick = () => $('scan-file').click();
     $('scan-file').onchange = async () => {
       const file = $('scan-file').files?.[0]; $('scan-file').value = '';
-      if (file) await this.scan(file);
+      if (file) { await this.showPreview(file); await this.scan(file); }
     };
+    $('scan-area').onclick = () => { if (this.scanFile && this.selection) this.scan(this.scanFile, this.selection); };
+    $('scan-clear').onclick = () => { this.selection = null; $('scan-area').disabled = true; this.drawPreview(); };
+    const canvas = $('scan-canvas');
+    canvas.onpointerdown = event => {
+      if (!this.previewBitmap) return;
+      canvas.setPointerCapture(event.pointerId);
+      this.dragStart = this.point(event); this.selection = null; this.drawPreview();
+    };
+    canvas.onpointermove = event => {
+      if (!this.dragStart) return;
+      const end = this.point(event), start = this.dragStart;
+      this.selection = {x:Math.min(start.x,end.x), y:Math.min(start.y,end.y), width:Math.abs(end.x-start.x), height:Math.abs(end.y-start.y)};
+      this.drawPreview();
+    };
+    canvas.onpointerup = event => {
+      if (!this.dragStart) return;
+      canvas.onpointermove(event); this.dragStart = null;
+      if (this.selection?.width < .025 || this.selection?.height < .01) this.selection = null;
+      $('scan-area').disabled = !this.selection || this.scanBusy;
+      this.drawPreview();
+    };
+    canvas.onpointercancel = () => { this.dragStart = null; };
     $('editor-form').onsubmit = event => { event.preventDefault(); this.save(); };
     for (const id of ['hours','minutes','seconds']) {
       $(id).addEventListener('focus', () => $(id).select());
@@ -62,13 +85,15 @@ export class Editor {
     $('token').value = ''; $('editor-message').textContent = ''; $('setup-message').textContent = '';
     $('hours').value = ''; $('minutes').value = ''; $('seconds').value = '';
     this.editingShow = null; $('edit-season').replaceChildren(); $('edit-episode').replaceChildren();
-    $('edit-disc').replaceChildren(); $('scan-message').textContent = '';
+    $('edit-disc').replaceChildren(); this.clearPreview(); $('scan-message').textContent = '';
     $('editor-title').textContent = ''; $('editor-context').textContent = ''; $('duration-hint').textContent = '';
   }
   lock() { this.serial++; this.store.reset(); this.busy = false; this.close(); this.buttons(false); this.status(); }
   buttons(busy) {
     this.busy = busy;
     for (const id of ['editor-save','editor-cancel','setup-save','setup-close','forget-editing','episode-state','hours','minutes','seconds','token','remember-editing','edit-season','edit-disc','edit-episode','scan-button']) $(id).disabled = busy;
+    $('scan-area').disabled = busy || this.scanBusy || !this.selection;
+    $('scan-clear').disabled = busy || this.scanBusy;
     $('editor-save').textContent = busy ? 'Saving…' : 'Save';
     $('setup-save').textContent = busy ? 'Connecting…' : 'Connect editing';
     if (!busy && this.entry) this.timeState();
@@ -149,12 +174,48 @@ export class Editor {
     select.value = currentIndex >= 0 ? String(currentIndex) : select.options[0]?.value || '';
     this.chooseEpisode();
   }
-  async scan(file) {
-    if (!this.editingShow || this.busy) return;
-    const serial = this.serial, show = this.editingShow;
-    $('scan-button').disabled = true; $('scan-message').textContent = 'Reading DVD screen on this device…';
+  clearPreview() {
+    this.previewBitmap?.close(); this.previewBitmap = null;
+    this.scanFile = null; this.selection = null; this.dragStart = null;
+    $('scan-preview').hidden = true; $('scan-area').disabled = true;
+  }
+  async showPreview(file) {
+    this.clearPreview();
+    this.scanFile = file;
     try {
-      const result = await readDVD(file);
+      const bitmap = await createImageBitmap(file);
+      if (this.scanFile !== file || !this.editingShow) { bitmap.close(); return; }
+      this.previewBitmap = bitmap;
+      const canvas = $('scan-canvas');
+      const scale = Math.min(1, 760 / bitmap.width, 900 / bitmap.height);
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      $('scan-preview').hidden = false;
+      this.drawPreview();
+    } catch { $('scan-message').textContent = 'Preview unavailable; trying the automatic scan.'; }
+  }
+  point(event) {
+    const box = $('scan-canvas').getBoundingClientRect();
+    return {x:Math.max(0,Math.min(1,(event.clientX-box.left)/box.width)), y:Math.max(0,Math.min(1,(event.clientY-box.top)/box.height))};
+  }
+  drawPreview() {
+    if (!this.previewBitmap) return;
+    const canvas = $('scan-canvas'), ctx = canvas.getContext('2d');
+    ctx.drawImage(this.previewBitmap,0,0,canvas.width,canvas.height);
+    if (!this.selection || !this.selection.width || !this.selection.height) return;
+    const {x,y,width,height} = this.selection;
+    ctx.fillStyle = 'rgba(18, 17, 15, .38)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(this.previewBitmap, x*this.previewBitmap.width, y*this.previewBitmap.height, width*this.previewBitmap.width, height*this.previewBitmap.height, x*canvas.width,y*canvas.height,width*canvas.width,height*canvas.height);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+    ctx.strokeRect(x*canvas.width,y*canvas.height,width*canvas.width,height*canvas.height);
+  }
+  async scan(file, crop = null) {
+    if (!this.editingShow || this.busy || this.scanBusy) return;
+    const serial = this.serial, show = this.editingShow;
+    this.scanBusy = true; $('scan-button').disabled = true; $('scan-area').disabled = true; $('scan-clear').disabled = true;
+    $('scan-message').textContent = crop ? 'Reading selected area on this device…' : 'Reading DVD screen on this device…';
+    try {
+      const result = await readDVD(file, crop);
       if (this.serial !== serial || this.editingShow !== show) return;
       const season = show.seasons.find(sn => String(sn.number) === $('edit-season').value);
       const disc = $('edit-disc').value;
@@ -166,10 +227,15 @@ export class Editor {
         const [h,m,s] = result.time.split(':').map(Number);
         this.setTime(h * 3600 + m * 60 + s); $('episode-state').value = 'progress'; this.timeState();
       }
-      $('scan-message').textContent = `${result.track ? `TRK ${result.track}${result.total ? `/${result.total}` : ''}` : 'Track unreadable'} · ${result.time || 'Time unreadable'}. ${matches.length === 1 ? 'Episode selected.' : result.track ? `No unique matching track on Disc ${disc || '—'} in this season; choose the episode manually.` : 'Choose the episode manually.'} Review before saving.`;
+      $('scan-message').textContent = `${result.track ? `TRK ${result.track}${result.total ? `/${result.total}` : ''}` : 'Track unreadable'} · ${result.time || 'Time unreadable'}. ${matches.length === 1 ? 'Episode selected.' : result.track ? `No unique matching track on Disc ${disc || '—'} in this season; choose the episode manually.` : 'Choose the episode manually.'} ${(!result.track || !result.time) && !crop ? 'Drag over the status bar and rescan. ' : ''}Review before saving.`;
     } catch (error) {
-      if (this.serial === serial && this.editingShow === show) $('scan-message').textContent = `Could not read this photo: ${error.message}. Try a clearer photo of the top status bar.`;
-    } finally { if (this.serial === serial && this.editingShow === show) $('scan-button').disabled = this.busy; }
+      if (this.serial === serial && this.editingShow === show) $('scan-message').textContent = `Could not read this photo: ${error.message}. Try selecting the top status bar.`;
+    } finally {
+      this.scanBusy = false;
+      if (this.serial === serial && this.editingShow === show) {
+        $('scan-button').disabled = this.busy; $('scan-area').disabled = this.busy || !this.selection; $('scan-clear').disabled = this.busy;
+      }
+    }
   }
   chooseEpisode() {
     const show = this.editingShow;
