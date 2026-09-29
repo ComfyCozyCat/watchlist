@@ -1,6 +1,6 @@
 import {deriveKey, decrypt, validateEnvelope, encode64, decode64} from './crypto.js?v=20260926-sync-1';
 import {ProgressStore, emptyProgress, applyProgress, episodeKey} from './progress.js?v=20260926-sync-1';
-import {Editor} from './editor.js?v=20260929-scan-1';
+import {Editor} from './editor.js?v=20260929-scan-2';
 
 const $ = id => document.getElementById(id);
 const storageKey = `watchlist:${location.pathname}:unlock`;

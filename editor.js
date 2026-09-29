@@ -1,6 +1,6 @@
 import {seal, openSealed} from './crypto.js?v=20260926-sync-1';
 import {clampTime, episodeKey, uniqueEpisode} from './progress.js?v=20260926-sync-1';
-import {readDVD} from './scanner.js?v=20260929-scan-1';
+import {readDVD} from './scanner.js?v=20260929-scan-2';
 const $ = id => document.getElementById(id);
 const tokenKey = `watchlist:${location.pathname}:editing`;
 const TOKEN_AAD = 'watchlist-local-editing-token-v1';

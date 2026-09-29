@@ -4,7 +4,8 @@ let workerPromise;
 
 async function worker() {
   if (!workerPromise) workerPromise = (async () => {
-    const {createWorker} = await import(asset('tesseract.esm.min.js'));
+    const {default: Tesseract} = await import(asset('tesseract.esm.min.js'));
+    const {createWorker} = Tesseract;
     const instance = await createWorker('eng', 1, {
       workerPath: asset('worker.min.js'), corePath: asset(''), langPath: asset(''),
       workerBlobURL: false, gzip: true
