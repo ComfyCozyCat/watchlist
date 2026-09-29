@@ -40,6 +40,12 @@ different episode to load its saved status and time. Per-row Edit buttons have
 been removed to keep the list compact.
 
 Enter Hours / Minutes / Seconds or choose **Watched** / **Unwatched**, then Save.
+While editing, **Scan DVD screen** can read a photo of the player's status bar.
+It uses the current show and selected disc, matches `TRK` against the episode's
+disc position, and fills the time. Review and adjust the selected episode or
+time before saving. The photo and OCR text stay in the browser; OCR code and
+English language data are served from this repository, with no third-party
+OCR request. The ordinary Save still syncs encrypted progress to GitHub.
 Minutes and seconds stay within 00–59. Positions above a known episode length
 adjust to its end when leaving a field or saving. Hours support long recordings;
 unknown lengths have no guessed media-duration limit (the input permits up to

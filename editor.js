@@ -1,5 +1,6 @@
 import {seal, openSealed} from './crypto.js?v=20260926-sync-1';
 import {clampTime, episodeKey, uniqueEpisode} from './progress.js?v=20260926-sync-1';
+import {readDVD} from './scanner.js?v=20260929-scan-1';
 const $ = id => document.getElementById(id);
 const tokenKey = `watchlist:${location.pathname}:editing`;
 const TOKEN_AAD = 'watchlist-local-editing-token-v1';
@@ -17,11 +18,17 @@ export class Editor {
     };
     $('setup-form').onsubmit = event => { event.preventDefault(); this.connect(); };
     $('editor-cancel').onclick = () => $('editor-dialog').close();
-    $('editor-dialog').addEventListener('close', () => { this.entry = null; this.editingShow = null; });
+    $('editor-dialog').addEventListener('close', () => { this.serial++; this.entry = null; this.editingShow = null; $('scan-message').textContent = ''; });
     $('editor-dialog').addEventListener('cancel', event => { if (this.busy) event.preventDefault(); });
     $('setup-dialog').addEventListener('cancel', event => { if (this.busy) event.preventDefault(); });
     $('edit-season').onchange = () => this.chooseSeason();
+    $('edit-disc').onchange = () => this.chooseDisc();
     $('edit-episode').onchange = () => this.chooseEpisode();
+    $('scan-button').onclick = () => $('scan-file').click();
+    $('scan-file').onchange = async () => {
+      const file = $('scan-file').files?.[0]; $('scan-file').value = '';
+      if (file) await this.scan(file);
+    };
     $('editor-form').onsubmit = event => { event.preventDefault(); this.save(); };
     for (const id of ['hours','minutes','seconds']) {
       $(id).addEventListener('focus', () => $(id).select());
@@ -55,12 +62,13 @@ export class Editor {
     $('token').value = ''; $('editor-message').textContent = ''; $('setup-message').textContent = '';
     $('hours').value = ''; $('minutes').value = ''; $('seconds').value = '';
     this.editingShow = null; $('edit-season').replaceChildren(); $('edit-episode').replaceChildren();
+    $('edit-disc').replaceChildren(); $('scan-message').textContent = '';
     $('editor-title').textContent = ''; $('editor-context').textContent = ''; $('duration-hint').textContent = '';
   }
   lock() { this.serial++; this.store.reset(); this.busy = false; this.close(); this.buttons(false); this.status(); }
   buttons(busy) {
     this.busy = busy;
-    for (const id of ['editor-save','editor-cancel','setup-save','setup-close','forget-editing','episode-state','hours','minutes','seconds','token','remember-editing','edit-season','edit-episode']) $(id).disabled = busy;
+    for (const id of ['editor-save','editor-cancel','setup-save','setup-close','forget-editing','episode-state','hours','minutes','seconds','token','remember-editing','edit-season','edit-disc','edit-episode','scan-button']) $(id).disabled = busy;
     $('editor-save').textContent = busy ? 'Saving…' : 'Save';
     $('setup-save').textContent = busy ? 'Connecting…' : 'Connect editing';
     if (!busy && this.entry) this.timeState();
@@ -118,14 +126,50 @@ export class Editor {
   }
   chooseSeason() {
     const season = this.editingShow.seasons.find(sn => String(sn.number) === $('edit-season').value);
+    const discs = [...new Set((season.episodes || []).map(ep => ep.disc).filter(Number.isInteger))].sort((a,b) => a-b);
+    const select = $('edit-disc'); select.replaceChildren();
+    for (const disc of discs) {
+      const option = document.createElement('option'); option.value = String(disc); option.textContent = `Disc ${String(disc).padStart(2,'0')}`; select.append(option);
+    }
+    if (!discs.length) { const option = document.createElement('option'); option.value = ''; option.textContent = 'No disc'; select.append(option); }
+    const current = (season.episodes || []).find(ep => ep.current);
+    select.value = String(current?.disc ?? (discs.includes(this.editingShow.disc) ? this.editingShow.disc : discs[0] ?? ''));
+    this.chooseDisc();
+  }
+  chooseDisc() {
+    const season = this.editingShow.seasons.find(sn => String(sn.number) === $('edit-season').value);
     const select = $('edit-episode'); select.replaceChildren();
     for (const [index, ep] of (season.episodes || []).entries()) {
+      if ($('edit-disc').value && String(ep.disc) !== $('edit-disc').value) continue;
       const option = document.createElement('option'); option.value = String(index);
-      option.textContent = `${ep.number != null ? `${ep.number} - ` : ''}${ep.title || 'Untitled episode'}${ep.disc ? ` · Disc ${String(ep.disc).padStart(2,'0')}` : ''}`;
+      option.textContent = `${ep.disc_position != null ? `TRK ${ep.disc_position} · ` : ''}${ep.number != null ? `${ep.number} - ` : ''}${ep.title || 'Untitled episode'}`;
       select.append(option);
     }
-    select.value = String(Math.max(0, (season.episodes || []).findIndex(ep => ep.current)));
+    const currentIndex = (season.episodes || []).findIndex(ep => ep.current && (!$('edit-disc').value || String(ep.disc) === $('edit-disc').value));
+    select.value = currentIndex >= 0 ? String(currentIndex) : select.options[0]?.value || '';
     this.chooseEpisode();
+  }
+  async scan(file) {
+    if (!this.editingShow || this.busy) return;
+    const serial = this.serial, show = this.editingShow;
+    $('scan-button').disabled = true; $('scan-message').textContent = 'Reading DVD screen on this device…';
+    try {
+      const result = await readDVD(file);
+      if (this.serial !== serial || this.editingShow !== show) return;
+      const season = show.seasons.find(sn => String(sn.number) === $('edit-season').value);
+      const disc = $('edit-disc').value;
+      const matches = (season.episodes || []).map((ep,index) => ({ep,index})).filter(({ep}) => String(ep.disc) === disc && Number(ep.disc_position) === result.track);
+      if (matches.length === 1) {
+        $('edit-episode').value = String(matches[0].index); this.chooseEpisode();
+      }
+      if (result.time) {
+        const [h,m,s] = result.time.split(':').map(Number);
+        this.setTime(h * 3600 + m * 60 + s); $('episode-state').value = 'progress'; this.timeState();
+      }
+      $('scan-message').textContent = `${result.track ? `TRK ${result.track}${result.total ? `/${result.total}` : ''}` : 'Track unreadable'} · ${result.time || 'Time unreadable'}. ${matches.length === 1 ? 'Episode selected.' : result.track ? `No unique matching track on Disc ${disc || '—'} in this season; choose the episode manually.` : 'Choose the episode manually.'} Review before saving.`;
+    } catch (error) {
+      if (this.serial === serial && this.editingShow === show) $('scan-message').textContent = `Could not read this photo: ${error.message}. Try a clearer photo of the top status bar.`;
+    } finally { if (this.serial === serial && this.editingShow === show) $('scan-button').disabled = this.busy; }
   }
   chooseEpisode() {
     const show = this.editingShow;

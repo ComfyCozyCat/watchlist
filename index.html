@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow, noarchive">
   <meta name="theme-color" content="#f5f0e7">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
   <title>Currently Watching</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=20260926-sync-1">
-  <script type="module" src="app.js?v=20260926-sync-1"></script>
+  <link rel="stylesheet" href="styles.css?v=20260929-scan-1">
+  <script type="module" src="app.js?v=20260929-scan-1"></script>
 </head>
 <body>
   <main>
@@ -59,8 +59,11 @@
     <form id="editor-form">
       <div class="edit-selectors">
         <label for="edit-season">Season<select id="edit-season"></select></label>
+        <label for="edit-disc">Disc<select id="edit-disc"></select></label>
         <label for="edit-episode">Episode<select id="edit-episode"></select></label>
       </div>
+      <div class="scan-row"><button id="scan-button" type="button" class="scan-button"><img src="scan-icon.svg" alt="" aria-hidden="true"> Scan DVD screen</button><input id="scan-file" type="file" accept="image/*" capture="environment" hidden></div>
+      <p id="scan-message" class="muted" role="status" aria-live="polite"></p>
       <label for="episode-state">Status</label>
       <select id="episode-state"><option value="progress">In progress</option><option value="watched">Watched</option><option value="unwatched">Unwatched</option></select>
       <div class="time-fields">
