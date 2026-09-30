@@ -48,6 +48,15 @@ English language data are served from this repository, with no third-party
 OCR request. The ordinary Save still syncs encrypted progress to GitHub.
 If automatic scanning misses the status bar, drag a rectangle over `TRK` and
 the timestamp in the local photo preview, then choose **Rescan selected area**.
+Scanning detects likely text rows, straightens small camera tilts, and retries
+with contrast stretching and local thresholding. It combines consistent track
+and time readings, checks tracks against the selected disc, and rejects times
+beyond a known episode length. Difficult photos may take several attempts;
+the editor shows progress while it tries. Conflicting readings stay unfilled.
+
+Scanner checks: `node tests/scanner.test.mjs`. The developer page
+`tests/scanner-browser.html` checks the actual browser worker and bundled model
+using synthetic clear and dim, tilted images; it uses no private watchlist data.
 Minutes and seconds stay within 00–59. Positions above a known episode length
 adjust to its end when leaving a field or saving. Hours support long recordings;
 unknown lengths have no guessed media-duration limit (the input permits up to

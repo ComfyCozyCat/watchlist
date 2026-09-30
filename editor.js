@@ -1,6 +1,6 @@
 import {seal, openSealed} from './crypto.js?v=20260926-sync-1';
 import {clampTime, episodeKey, uniqueEpisode} from './progress.js?v=20260926-sync-1';
-import {readDVD} from './scanner.js?v=20260929-crop-1';
+import {readDVD} from './scanner.js?v=20260930-accuracy-1';
 const $ = id => document.getElementById(id);
 const tokenKey = `watchlist:${location.pathname}:editing`;
 const TOKEN_AAD = 'watchlist-local-editing-token-v1';
@@ -92,6 +92,7 @@ export class Editor {
   buttons(busy) {
     this.busy = busy;
     for (const id of ['editor-save','editor-cancel','setup-save','setup-close','forget-editing','episode-state','hours','minutes','seconds','token','remember-editing','edit-season','edit-disc','edit-episode','scan-button']) $(id).disabled = busy;
+    if (this.scanBusy) for (const id of ['editor-save','episode-state','hours','minutes','seconds','edit-season','edit-disc','edit-episode','scan-button']) $(id).disabled = true;
     $('scan-area').disabled = busy || this.scanBusy || !this.selection;
     $('scan-clear').disabled = busy || this.scanBusy;
     $('editor-save').textContent = busy ? 'Saving…' : 'Save';
@@ -212,10 +213,19 @@ export class Editor {
   async scan(file, crop = null) {
     if (!this.editingShow || this.busy || this.scanBusy) return;
     const serial = this.serial, show = this.editingShow;
-    this.scanBusy = true; $('scan-button').disabled = true; $('scan-area').disabled = true; $('scan-clear').disabled = true;
+    this.scanBusy = true; this.buttons(this.busy);
     $('scan-message').textContent = crop ? 'Reading selected area on this device…' : 'Reading DVD screen on this device…';
     try {
-      const result = await readDVD(file, crop);
+      const selectedSeason = show.seasons.find(sn => String(sn.number) === $('edit-season').value);
+      const selectedDisc = $('edit-disc').value;
+      const episodes = (selectedSeason.episodes || []).filter(ep => String(ep.disc) === selectedDisc);
+      const tracks = [...new Set(episodes.map(ep => Number(ep.disc_position)).filter(n => Number.isInteger(n) && n > 0))];
+      const durations = Object.fromEntries(tracks.filter(track => episodes.filter(ep => Number(ep.disc_position) === track).length === 1).map(track => [track, episodes.find(ep => Number(ep.disc_position) === track).duration_seconds]));
+      const result = await readDVD(file, crop, {
+        tracks, durations,
+        cancelled: () => this.serial !== serial || this.editingShow !== show,
+        onProgress: attempt => { if (this.serial === serial && this.editingShow === show) $('scan-message').textContent = `${crop ? 'Reading selected area' : 'Reading DVD status bar'}… Attempt ${attempt}.`; }
+      });
       if (this.serial !== serial || this.editingShow !== show) return;
       const season = show.seasons.find(sn => String(sn.number) === $('edit-season').value);
       const disc = $('edit-disc').value;
@@ -233,7 +243,7 @@ export class Editor {
     } finally {
       this.scanBusy = false;
       if (this.serial === serial && this.editingShow === show) {
-        $('scan-button').disabled = this.busy; $('scan-area').disabled = this.busy || !this.selection; $('scan-clear').disabled = this.busy;
+        this.buttons(this.busy); $('editor-save').disabled = this.busy || !this.entry;
       }
     }
   }
@@ -264,7 +274,7 @@ export class Editor {
     $('seconds').value = String(Math.floor(value) % 60).padStart(2,'0');
   }
   timeState() {
-    for (const id of ['hours','minutes','seconds']) $(id).disabled = this.busy || $('episode-state').value === 'watched';
+    for (const id of ['hours','minutes','seconds']) $(id).disabled = this.busy || this.scanBusy || $('episode-state').value === 'watched';
   }
   normalize() {
     if (!this.entry) return 0;
